@@ -53,7 +53,14 @@ __device__ bool hittable_list::hit(const ray& r, float t_min, float t_max,
 		if (list[i]->hit(r, t_min, closest_so_far, temp_rec)) {
 			hit_anything = true;
 			closest_so_far = temp_rec.t;
-			rec = temp_rec;
+			rec.type = temp_rec.type;
+			rec.t = temp_rec.t;
+			rec.p = temp_rec.p;
+			rec.normal = temp_rec.normal;
+			rec.mat_ptr = temp_rec.mat_ptr;
+			rec.r = temp_rec.r;
+			rec.g = temp_rec.g;
+			rec.b = temp_rec.b;
 		}
 	}
 	return hit_anything;

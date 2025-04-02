@@ -13,19 +13,23 @@
 
 class material;
 
-class hit_record {
-public:
-	float t;
-	vec3 p;
-	vec3 normal;
-	material *mat_ptr;
-};
-
 enum hittable_type {
 	type_hittable_list,
 	type_sphere,
 	type_triangle,
 	type_bvh_node
+};
+
+class hit_record {
+public:
+	hittable_type type;
+	float t;
+	vec3 p;
+	vec3 normal;
+	material *mat_ptr;
+	int r = 0;
+	int g = 0;
+	int b = 0;
 };
 
 class hittable {

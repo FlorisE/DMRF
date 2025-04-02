@@ -12,7 +12,7 @@ using namespace std;
 
 class FileReader {
 private:
-	static void read_obj_file(char *dir, vector<hittable*> &vec_obj_list, material *mat_ptr);
+	static void read_obj_file(int index, char *dir, vector<hittable*> &vec_obj_list, material *mat_ptr, float posx, float posy, float posz, bool with_normals);
 public:
 	static bool readfile_to_render(
 		vector<hittable*>& vec_obj_list, 
@@ -20,7 +20,8 @@ public:
 		vector<hittable*>& vec_geom_list,
 		const char *path,          // 
 		int &nx, int &ny, int &ns, //
-		camera *&c                // 
+		camera *&c,                // 
+		int &n_bounce
 		);
 };
 

@@ -117,7 +117,7 @@ void create_world_cpu(hittable **d_list) {
 
 
 void create_with_bvh_geometry_shadow(
-  const char *config_path, hittable **&d_world, hittable **&d_lightsrc, hittable **&d_shadow) {
+  const char *config_path, hittable **&d_world, hittable **&d_lightsrc, hittable **&d_shadow, int& n_bounce) {
   // --------------------- AABB
 
   // ---------------- json scene
@@ -130,14 +130,11 @@ void create_with_bvh_geometry_shadow(
   int nx, ny, ns;
   FileReader::readfile_to_render(
     vec_obj_from_json, vec_lightsrc_list, vec_shadow_list,
-    config_path, nx, ny, ns, h_camera);
+    config_path, nx, ny, ns, h_camera, n_bounce);
   int size_obj_from_json = vec_obj_from_json.size();
   int size_lightsrc_list = vec_lightsrc_list.size();
   int size_shadow_list = vec_shadow_list.size();
 
-  printf("size_obj_from_json %d\n", size_obj_from_json);
-  printf("size_lightsrc_list %d\n", size_lightsrc_list);
-  printf("size_shadow_list %d\n", size_shadow_list);
   // ---------------- json scene
 
   // ---------------- create scene
@@ -412,9 +409,9 @@ __global__ void rand_init(curandState *rand_state) {
 
 
 
-void create_ray_trace_scene(const char *config_path, hittable **&d_world, hittable **&d_lightsrc, hittable **&d_shadow) {
+void create_ray_trace_scene(const char *config_path, hittable **&d_world, hittable **&d_lightsrc, hittable **&d_shadow, int& n_bounce) {
   // create_with_bvh(d_world);
-  create_with_bvh_geometry_shadow(config_path, d_world, d_lightsrc, d_shadow);
+  create_with_bvh_geometry_shadow(config_path, d_world, d_lightsrc, d_shadow, n_bounce);
 
   // create_without_bvh2(d_world);
   // create_without_bvh2_light_source(d_world);

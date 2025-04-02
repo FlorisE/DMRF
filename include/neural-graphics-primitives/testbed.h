@@ -643,6 +643,7 @@ public:
 	bool m_render_ground_truth = false;
 	EGroundTruthRenderMode m_ground_truth_render_mode = EGroundTruthRenderMode::Shade;
 	float m_ground_truth_alpha = 1.0f;
+	float m_depth_scale = 1.0f;
 
 	bool m_train = false;
 	bool m_training_data_available = false;
@@ -654,6 +655,8 @@ public:
 
 	// Rendering stuff
 	Eigen::Vector2i m_window_res = Eigen::Vector2i::Constant(0);
+	bool m_rt_initialized = false;
+	bool m_rt_depth = false;
 	bool m_dynamic_res = true;
 	float m_dynamic_res_target_fps = 20.0f;
 	int m_fixed_res_factor = 8;

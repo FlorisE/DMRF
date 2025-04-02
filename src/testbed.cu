@@ -620,6 +620,9 @@ void Testbed::imgui() {
 	if (!m_training_data_available) { ImGui::EndDisabled(); }
 
 	if (ImGui::CollapsingHeader("Rendering", ImGuiTreeNodeFlags_DefaultOpen)) {
+		if (m_rt_initialized) {
+			ImGui::SliderInt("Hybrid rendering", &m_hybrid_render, 0, 1);
+		}
 		ImGui::Checkbox("Render", &m_render);
 		ImGui::SameLine();
 
@@ -691,6 +694,7 @@ void Testbed::imgui() {
 			accum_reset |= ImGui::SliderFloat("Groundtruth Alpha", &m_ground_truth_alpha, 0.0f, 1.0f, "%.02f", ImGuiSliderFlags_AlwaysClamp);
 		}
 		accum_reset |= ImGui::Combo("Color space", (int*)&m_color_space, ColorSpaceStr);
+		accum_reset |= ImGui::SliderFloat("Depth scale", &m_depth_scale, 0.0f, 10.0f, "%.02f", ImGuiSliderFlags_AlwaysClamp);
 		accum_reset |= ImGui::Combo("Tonemap curve", (int*)&m_tonemap_curve, TonemapCurveStr);
 		accum_reset |= ImGui::ColorEdit4("Background", &m_background_color[0]);
 		if (ImGui::SliderFloat("Exposure", &m_exposure, -5.f, 5.f)) {
@@ -2716,10 +2720,9 @@ void Testbed::render_frame(const Matrix<float, 3, 4>& camera_matrix0, const Matr
 	switch (m_testbed_mode) {
 		case ETestbedMode::Nerf:
 			if (!m_render_ground_truth || m_ground_truth_alpha < 1.0f) {
-				if (m_hybrid_render == 0)
+				if (m_hybrid_render == 0) {
 					render_nerf(render_buffer, max_res, focal_length, camera_matrix0, camera_matrix1, nerf_rolling_shutter, screen_center, m_stream.get());
-				else if (m_hybrid_render == 1) {
-					// printf("m_hybrid_render == 1\n");
+				} else if (m_hybrid_render == 1) {
 					render_nerf_rt(render_buffer, max_res, focal_length, camera_matrix0, camera_matrix1, nerf_rolling_shutter, screen_center, m_stream.get());
 				}
 			}

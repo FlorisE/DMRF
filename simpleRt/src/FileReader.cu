@@ -20,9 +20,25 @@
 using namespace rapidjson;
 using namespace std;
 
+// http://tsitsul.in/pdf/colors/normal_12.pdf
+static int COLOR_SCHEME[14][3] = {{235, 172, 35},
+                     {184, 0, 88},
+					 {0, 140, 249},
+					 {0, 110, 0},
+					 {0, 187, 173},
+					 {209, 99, 230},
+					 {209,99,230},
+					 {178, 69, 2},
+					 {255, 146, 135},
+					 {89, 84, 214},
+					 {0, 198, 248},
+					 {135, 133, 0},
+					 {0, 167, 108},
+					 {189, 189, 189}};
 
 
-void FileReader::read_obj_file(char *dir, vector<hittable*> &vec_obj_list, material *mat_ptr) {
+
+void FileReader::read_obj_file(int index, char *dir, vector<hittable*> &vec_obj_list, material *mat_ptr, float posx, float posy, float posz, bool with_normals) {
 	std::string filename(dir);
 	tinyobj::attrib_t attrib;
 	std::vector<tinyobj::shape_t> shapes;
@@ -42,9 +58,8 @@ void FileReader::read_obj_file(char *dir, vector<hittable*> &vec_obj_list, mater
 		// throw std::runtime_error{fmt::format("Error loading obj: {}", err)};
 	}
 
-	bool is_transformed = false;
+	bool is_transformed = true;
 
-	printf("read_obj_file!!\n");
 
 	// AGAO - Scale and offset mesh in order to match that transform applied to the
 	// raw training data by Instant-NGP.  (Hardcode default values for now)
@@ -61,7 +76,6 @@ void FileReader::read_obj_file(char *dir, vector<hittable*> &vec_obj_list, mater
 	// Loop over shapes
 	for (size_t s = 0; s < shapes.size(); s++) {
 		// Loop over faces
-		printf("shapes[s].mesh.num_face_vertices.size() %d\n", (int) shapes[s].mesh.num_face_vertices.size());
 		size_t index_offset = 0;
 		for (size_t f = 0; f < shapes[s].mesh.num_face_vertices.size(); f++) {
 			size_t fv = size_t(shapes[s].mesh.num_face_vertices[f]);
@@ -74,31 +88,48 @@ void FileReader::read_obj_file(char *dir, vector<hittable*> &vec_obj_list, mater
 
 			// Loop over vertices in the face.
 			vector<vec3> points;
+			vector<vec3> normals;
 			for (size_t v = 0; v < 3; v++) {
 
 				tinyobj::index_t idx = shapes[s].mesh.indices[index_offset + v];
-				printf("%d ", idx.vertex_index);
 				const tinyobj::real_t vx = attrib.vertices[3*idx.vertex_index+0];
 				const tinyobj::real_t vy = attrib.vertices[3*idx.vertex_index+1];
 				const tinyobj::real_t vz = attrib.vertices[3*idx.vertex_index+2];
 
 				if (is_transformed) {
-					const Eigen::Vector3f point(vx * scale + offset, vy * scale + offset, vz * scale + offset);
+					const Eigen::Vector3f point(vx * scale + offset + posx, vy * scale + offset + posy, vz * scale + offset + posz);
 					const Eigen::Vector3f rotated_point = rot_mat * point;
 
 					points.push_back(vec3(rotated_point[0], rotated_point[1], rotated_point[2]));
 				}
 				else {
-					points.push_back(vec3(vx, vy, vz));
+					points.push_back(vec3(vx + posx, vy + posy, vz + posz));
+				}
+				if (with_normals) {
+				    if (idx.normal_index >= 0) {
+				    	const tinyobj::real_t nx = attrib.normals[3*idx.normal_index+0];
+				    	const tinyobj::real_t ny = attrib.normals[3*idx.normal_index+1];
+				    	const tinyobj::real_t nz = attrib.normals[3*idx.normal_index+2];
+				    	normals.push_back(vec3(nx, ny, nz));
+				    }
 				}
 			}
 			// printf("\n");
 
 			index_offset += fv;
 
-			vec_obj_list.push_back(
-				new triangle(points[0], points[1], points[2],
-				mat_ptr));
+			if (!with_normals) {
+				vec_obj_list.push_back(
+					new triangle(points[0], points[1], points[2],
+					COLOR_SCHEME[index][0], COLOR_SCHEME[index][1], COLOR_SCHEME[index][2], 
+					mat_ptr));
+			} else {
+				vec_obj_list.push_back(
+					new triangle(points[0], points[1], points[2],
+					COLOR_SCHEME[index][0], COLOR_SCHEME[index][1], COLOR_SCHEME[index][2], 
+					normals[0], normals[1], normals[2],
+					mat_ptr));
+			}
 
 			// vec_obj_list.push_back(
 			// 	new triangle(points[0], points[2], points[1],
@@ -106,7 +137,6 @@ void FileReader::read_obj_file(char *dir, vector<hittable*> &vec_obj_list, mater
 
 		}
 	}
-	printf("vec_obj_list size %d\n", (int) vec_obj_list.size());
 }
 
 
@@ -165,7 +195,8 @@ bool FileReader::readfile_to_render(
 	vector<hittable*>& vec_geom_list,
 	const char *path,          // 
 	int &nx, int &ny, int &ns, // 
-	camera *&c // 
+	camera *&c, // 
+	int &n_bounce
 	)
 {
 	ifstream inputfile(path);
@@ -175,6 +206,7 @@ bool FileReader::readfile_to_render(
 	cerr << (nx = json_tree["nx"].GetInt()) << endl;
 	cerr << (ny = json_tree["ny"].GetInt()) << endl;
 	cerr << (ns = json_tree["ns"].GetInt()) << endl;
+	cerr << (n_bounce = json_tree["n_bounce"].GetInt()) << endl;
 
 	if (c == NULL)
 		c = new camera(
@@ -295,25 +327,49 @@ bool FileReader::readfile_to_render(
 
 	//o_list_size = sphere_cnt;
 	for (int i = 0; i < obj_cnt; i++) {
+		float posx = 0.f;
+		float posy = 0.f;
+		float posz = 0.f;
+		if (json_tree["objfile"][i].HasMember("position")) {
+			posx = json_tree["objfile"][i]["position"][0].GetFloat();
+			posy = json_tree["objfile"][i]["position"][1].GetFloat();
+			posz = json_tree["objfile"][i]["position"][2].GetFloat();
+			std::cout << "Position: " << posx << ", " << posy << ", " << posz << std::endl;
+		}
 
 		if (mat_type[json_tree["objfile"][i]["material"].GetInt() - 1] == 1) {
 			read_obj_file(
+				i,
 				(char*)(json_tree["objfile"][i]["dir"].GetString()),
 				vec_lightsrc_list,
-				mat_list[json_tree["objfile"][i]["material"].GetInt() - 1]
+				mat_list[json_tree["objfile"][i]["material"].GetInt() - 1],
+				posx,
+				posy,
+				posz,
+				true
 			);
 		}
 		else if (mat_type[json_tree["objfile"][i]["material"].GetInt() - 1] == 2) {
 			read_obj_file(
+				i,
 				(char*)(json_tree["objfile"][i]["dir"].GetString()),
 				vec_geom_list,
-				mat_list[json_tree["objfile"][i]["material"].GetInt() - 1]
+				mat_list[json_tree["objfile"][i]["material"].GetInt() - 1],
+				posx,
+				posy,
+				posz,
+				true
 			);
 		} else {
 			read_obj_file(
+				i,
 				(char*)(json_tree["objfile"][i]["dir"].GetString()),
 				vec_obj_list,
-				mat_list[json_tree["objfile"][i]["material"].GetInt() - 1]
+				mat_list[json_tree["objfile"][i]["material"].GetInt() - 1],
+				posx,
+				posy,
+				posz,
+				true
 			);
 		}
 

@@ -110,6 +110,13 @@ int main(int argc, char** argv) {
 		{'v', "version"},
 	};
 
+	ValueFlag<string> rt_config_flag{
+		parser,
+		"RT_CONFIG",
+		"Initialize the raytraced renderer for meshes",
+		{"rt_config"}
+	};
+
 	// Parse command line arguments and react to parsing
 	// errors using exceptions.
 	try {
@@ -174,7 +181,9 @@ int main(int argc, char** argv) {
 		Testbed testbed{mode};
 
 		if (hybrid_render_flag) {
-			testbed.m_hybrid_render = 1;
+			fs::path rt_config = get(rt_config_flag);
+			testbed.init_rt(rt_config.str().c_str());
+			testbed.m_rt_initialized = true;
 		}
 
 		if (scene_flag) {

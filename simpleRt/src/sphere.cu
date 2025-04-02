@@ -30,6 +30,7 @@ __device__ bool sphere::hit(const ray& r, float t_min, float t_max, hit_record& 
 			rec.p = r.point_at_parameter(rec.t);
 			rec.normal = (rec.p - center) / radius;
 			rec.mat_ptr = mat_ptr;
+			rec.type = type;
 			return true;
 		}
 		temp = (-b + sqrt(discriminant)) / a;
@@ -38,6 +39,7 @@ __device__ bool sphere::hit(const ray& r, float t_min, float t_max, hit_record& 
 			rec.p = r.point_at_parameter(rec.t);
 			rec.normal = (rec.p - center) / radius;
 			rec.mat_ptr = mat_ptr;
+			rec.type = type;
 			return true;
 		}
 	}

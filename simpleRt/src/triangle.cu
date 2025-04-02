@@ -3,21 +3,41 @@
 #include "aabb.cuh"
 
 __host__ __device__ triangle::triangle(vec3 vertexone, vec3 vertextwo, vec3 vertexthree,
-	//vec3 vn1, vec3 vn2, vec3 vn3,
+	int r, int g, int b,
 	material *mat_ptr) {
 	type = type_triangle;
 
 	v1 = vertexone;
 	v2 = vertextwo;
 	v3 = vertexthree;
-	//this->vn1 = cross(v3 - v1,v2-v1);
+	this->r = r;
+	this->g = g;
+	this->b = b;
 	this->vn1 = cross(v2 - v1, v3 - v1);
 	this->vn1 /= this->vn1.length();
 	this->vn2 = this->vn1;
 	this->vn3 = this->vn1;
-	/*this->vn1 = vn1;
+	center = (v1 + v2 + v3) / 3;
+	normal = cross(v2 - v1, v3 - v1);
+	this->mat_ptr = mat_ptr;
+
+}
+
+__host__ __device__ triangle::triangle(vec3 vertexone, vec3 vertextwo, vec3 vertexthree,
+	int r, int g, int b,
+	vec3 vn1, vec3 vn2, vec3 vn3,
+	material *mat_ptr) {
+	type = type_triangle;
+
+	v1 = vertexone;
+	v2 = vertextwo;
+	v3 = vertexthree;
+	this->r = r;
+	this->g = g;
+	this->b = b;
+	this->vn1 = vn1;
 	this->vn2 = vn2;
-	this->vn3 = vn3;*/
+	this->vn3 = vn3;
 	center = (v1 + v2 + v3) / 3;
 	normal = cross(v2 - v1, v3 - v1);
 	this->mat_ptr = mat_ptr;
@@ -38,71 +58,50 @@ __host__ __device__ bool triangle::bounding_box(float t0, float t1, aabb& box){
 }
 
 //Reference: https://github.com/tylermorganwall/rayrender/
-__device__ bool triangle::hit(const ray& r, float t_min, float t_max, hit_record& rec) const{
+__device__ bool triangle::hit(const ray& ra, float t_min, float t_max, hit_record& rec) const{
 	vec3 edge1 = v2 - v1;
-
 	vec3 edge2 = v3 - v1;
-	vec3 pvec = cross(r.direction(), edge2);
-
+	vec3 pvec = cross(ra.direction(), edge2);
 	float det = dot(pvec, edge1);
 
-
-
-	// no culling
-
 	if (std::fabs(det) < 1E-9) {
-		// printf("return false triangle\n");
-		return(false);
-
+		return false;
 	}
 
 	float invdet = 1.0 / det;
 
-	vec3 tvec = r.origin() - v1;
-
+	vec3 tvec = ra.origin() - v1;
 	float u = dot(pvec, tvec) * invdet;
-
 	if (u < 0.0 || u > 1.0) {
-
-		return(false);
-
+		return false;
 	}
 
-
-
 	vec3 qvec = cross(tvec, edge1);
-
-	float v = dot(qvec, r.direction()) * invdet;
+	float v = dot(qvec, ra.direction()) * invdet;
 
 	if (v < 0 || u + v > 1.0) {
-
-		return(false);
-
+		return false;
 	}
 
 	float t = dot(qvec, edge2) * invdet;
 
-
-
 	if (t < t_min || t > t_max) {
-
-		return(false);
-
+		return false;
 	}
 
 	float w = 1 - u - v;
 
 	rec.t = t;
 
-	rec.p = r.point_at_parameter(t);
-
-	//rec.u = u;
-
-	//rec.v = v;
+	rec.p = ra.point_at_parameter(t);
 
 	rec.normal = w * vn1 + u * vn2 + v * vn3;
 
 	rec.mat_ptr = mat_ptr;
+
+	rec.r = r;
+	rec.g = g;
+	rec.b = b;
 
 	return(true);
 

@@ -315,6 +315,8 @@ PYBIND11_MODULE(pyngp, m) {
 		.value("Distortion", ERenderMode::Distortion)
 		.value("Cost", ERenderMode::Cost)
 		.value("Slice", ERenderMode::Slice)
+		.value("MeshSegmentation", ERenderMode::MeshSegmentation)
+		.value("MeshDepth", ERenderMode::MeshDepth)
 		.export_values();
 
 	py::enum_<ERandomMode>(m, "RandomMode")
@@ -552,6 +554,7 @@ PYBIND11_MODULE(pyngp, m) {
 		)
 
 	// add for hybrid end
+		.def_readwrite("rt_depth", &Testbed::m_rt_depth)
 		.def_readwrite("dynamic_res", &Testbed::m_dynamic_res)
 		.def_readwrite("dynamic_res_target_fps", &Testbed::m_dynamic_res_target_fps)
 		.def_readwrite("fixed_res_factor", &Testbed::m_fixed_res_factor)
@@ -570,6 +573,7 @@ PYBIND11_MODULE(pyngp, m) {
 		.def_readwrite("autofocus_target", &Testbed::m_autofocus_target)
 		.def_readwrite("floor_enable", &Testbed::m_floor_enable)
 		.def_readwrite("exposure", &Testbed::m_exposure)
+		.def_readwrite("depth_scale", &Testbed::m_depth_scale)
 		.def_property("scale", &Testbed::scale, &Testbed::set_scale)
 		.def_readonly("bounding_radius", &Testbed::m_bounding_radius)
 		.def_readwrite("render_aabb", &Testbed::m_render_aabb)

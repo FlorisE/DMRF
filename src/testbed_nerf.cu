@@ -3119,10 +3119,10 @@ const float* Testbed::get_inference_extra_dims(cudaStream_t stream) const {
 
 
 void Testbed::init_rt(const char *config_path) {
+	m_rt_initialized = true;
 	m_simple_rt.n_sample = 1;
-	m_simple_rt.n_bounce = 50;
 	std::cout << "config_path:\n" << config_path << std::endl;
-	create_ray_trace_scene(config_path, m_simple_rt.d_world, m_simple_rt.d_lightsrc, m_simple_rt.d_shadow);
+	create_ray_trace_scene(config_path, m_simple_rt.d_world, m_simple_rt.d_lightsrc, m_simple_rt.d_shadow, m_simple_rt.n_bounce);
 
 	m_simple_rt.rt_nerf_rot = (Eigen::Matrix3f() << 1, 0, 0, 0, 1, 0, 0, 0, 1).finished();
 	m_simple_rt.rt_nerf_trans = (Eigen::Vector3f() << 0, 0, 0).finished();
@@ -3713,10 +3713,82 @@ __global__ void add_sample_rt(
 	// rgba[pixel_index][3] = 0.0f;
 }
 
+__global__ void instance_segmentation(
+	Vector2i resolution,
+	Array4f* __restrict__ frame_buffer,
+	ray *array_ray,
+	ray *array_next_ray,
+	hittable **world
+) {
+	uint32_t x = threadIdx.x + blockDim.x * blockIdx.x;
+	uint32_t y = threadIdx.y + blockDim.y * blockIdx.y;
 
+	if (x >= resolution.x() || y >= resolution.y()) {
+		return;
+	}
+
+	uint32_t idx = x + resolution.x() * y;
+	
+	ray& cur_ray = array_ray[idx];
+	ray& next_ray = array_next_ray[idx];
+	cur_ray = next_ray;
+
+	hit_record rec;
+	if ((*world)->hit(cur_ray, 0.001f, FLT_MAX, rec)) {
+		frame_buffer[idx][0] = rec.r / static_cast<float>(255);
+		frame_buffer[idx][1] = rec.g / static_cast<float>(255);
+		frame_buffer[idx][2] = rec.b / static_cast<float>(255);
+	} else {
+		frame_buffer[idx] = Array4f::Constant(0.0f);
+	}
+	frame_buffer[idx][3] = 1.0f;
+
+}
+
+__global__ void estimate_depth(
+	Vector2i resolution,
+	Array4f* __restrict__ frame_buffer,
+	ray *array_ray,
+	ray *array_next_ray,
+	hittable **world,
+	float depth_scale,
+	float z0,
+	float z1,
+	float z2
+) {
+	uint32_t x = threadIdx.x + blockDim.x * blockIdx.x;
+	uint32_t y = threadIdx.y + blockDim.y * blockIdx.y;
+
+	if (x >= resolution.x() || y >= resolution.y()) {
+		return;
+	}
+
+	uint32_t idx = x + resolution.x() * y;
+	
+	ray& cur_ray = array_ray[idx];
+	ray& next_ray = array_next_ray[idx];
+	cur_ray = next_ray;
+
+	hit_record rec;
+	if ((*world)->hit(cur_ray, 0.001f, FLT_MAX, rec)) {
+		vec3 t = cur_ray.origin();
+		float new_z = z0 * rec.p[0] + z1 * rec.p[1] + z2 * rec.p[2] - z0 * t[0] - z1 * t[1] - z2 * t[2];
+		if (new_z >= 0) {
+			frame_buffer[idx][0] = new_z * depth_scale;
+			frame_buffer[idx][1] = new_z * depth_scale;
+			frame_buffer[idx][2] = new_z * depth_scale;
+		} else {
+			frame_buffer[idx][0] = 1.0f;
+			frame_buffer[idx][1] = 0;
+			frame_buffer[idx][2] = 0;
+		}
+	} else {
+		frame_buffer[idx] = Array4f::Constant(0.0f);
+	}
+	frame_buffer[idx][3] = 1.0f;
+}
 
 void Testbed::render_nerf_rt(CudaRenderBuffer& render_buffer, const Vector2i& max_res, const Vector2f& focal_length, const Matrix<float, 3, 4>& camera_matrix0, const Matrix<float, 3, 4>& camera_matrix1, const Vector4f& rolling_shutter, const Vector2f& screen_center, cudaStream_t stream) {
-
 	float plane_z = m_slice_plane_z + m_scale;
 
 	ERenderMode render_mode = m_visualized_dimension > -1 ? ERenderMode::EncodingVis : m_render_mode;
@@ -3740,8 +3812,10 @@ void Testbed::render_nerf_rt(CudaRenderBuffer& render_buffer, const Vector2i& ma
 
 	resize_rt(resolution, threads, blocks, stream, render_buffer.spp());
 	printf("spp %d\n", render_buffer.spp());
-	bool is_shadow = true;
+	bool is_shadow = false;
 	// bool is_shadow = false;
+	m_simple_rt.n_sample = 1;
+
 	for (int i_sample = 0; i_sample < m_simple_rt.n_sample; i_sample++) {
 		// initialize trace
 
@@ -3777,7 +3851,37 @@ void Testbed::render_nerf_rt(CudaRenderBuffer& render_buffer, const Vector2i& ma
 			render_mode,
 			stream
 		);
+		CUDA_CHECK_THROW(cudaStreamSynchronize(stream));
 
+		if (m_render_mode == ERenderMode::MeshDepth) {
+			estimate_depth<<<blocks, threads, 0, stream>>>(
+				render_buffer.in_resolution(),
+				render_buffer.frame_buffer(),
+				m_simple_rt.array_ray,
+				m_simple_rt.array_next_ray,
+				m_simple_rt.d_world,
+				1.0f / (m_nerf.training.dataset.scale * m_depth_scale),
+				camera_matrix0(0, 2),
+				camera_matrix0(1, 2),
+				camera_matrix0(2, 2)
+			);
+			checkCudaErrors(cudaGetLastError());
+			CUDA_CHECK_THROW(cudaStreamSynchronize(stream));
+			continue;
+		} 
+		
+		if (m_render_mode == ERenderMode::MeshSegmentation) {
+			instance_segmentation<<<blocks, threads, 0, stream>>>(
+				render_buffer.in_resolution(),
+				render_buffer.frame_buffer(),
+				m_simple_rt.array_ray,
+				m_simple_rt.array_next_ray,
+				m_simple_rt.d_world
+			);
+			checkCudaErrors(cudaGetLastError());
+			CUDA_CHECK_THROW(cudaStreamSynchronize(stream));
+			continue;
+		}
 
 		for (int i_bounce = 0; i_bounce < m_simple_rt.n_bounce; i_bounce++)
 		{
@@ -3974,7 +4078,7 @@ void Testbed::render_nerf(CudaRenderBuffer& render_buffer, const Vector2i& max_r
 	if (m_render_mode == ERenderMode::Slice) {
 		n_hit = m_nerf.tracer.n_rays_initialized();
 	} else {
-		float depth_scale = 1.0f / m_nerf.training.dataset.scale;
+		float depth_scale = 1.0f / (m_nerf.training.dataset.scale * m_depth_scale);
 		n_hit = m_nerf.tracer.trace(
 			*m_nerf_network,
 			m_render_aabb,

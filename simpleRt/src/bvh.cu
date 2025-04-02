@@ -52,6 +52,7 @@ __device__ bool bvh_node::hit(const ray& r, float t_min, float t_max, hit_record
 	int top = 0;
 	node_stack[++top] = (hittable*)this;
 	rec.t = 1e18;
+	rec.type = type;
 	// printf("bvh ~~~~~~~~~~ hit 2\n");
 	while (top) {
 		// printf("top %d \n", top);
